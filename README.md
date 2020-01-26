@@ -12,6 +12,8 @@ Ainda tem erro para as coordenadas, XXXX (S), XXXX (W), pois no endereco do goog
 
 Se for ligar a energia diretamente no modulo do GPS, ligar 3.3V na entrada VCC (pino 12), no meu caso estou usando o aparelho completo, sem alteracoes, so conectei o TX e RX.
 
+O modulo so funcionou com baud Rate do GPS em 4800. Para informacoes do monitor serial esse pode ser 115200
+
 Referencia;
 
 https://forum.arduino.cc/index.php?topic=194110.0
