@@ -10,6 +10,7 @@ O modulo possui RX e TX A e B, foram usados o TX e RX (A), pinos 4 e 5.
 
 Ainda tem erro para as coordenadas, XXXX (S), XXXX (W), pois no endereco do google maps, esta faltando o sinal de (-) menos na frente das coordenadas.
 
+Se for ligar a energia diretamente no modulo do GPS, ligar 3.3V na entrada VCC (pino 12), no meu caso estou usando o aparelho completo, sem alteracoes, so conectei o TX e RX.
 
 Referencia;
 
