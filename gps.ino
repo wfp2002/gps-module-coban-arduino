@@ -1,172 +1,107 @@
-#include <Adafruit_GPS.h>
+#define GPS_RX 3
+#define GPS_TX 2
+#define GPS_Serial_Baud 4800
 #include <SoftwareSerial.h>
- // If you're using a GPS module:
-// Connect the GPS Power pin to 5V
-// Connect the GPS Ground pin to ground
-// If using software serial (sketch example default):
-//   Connect the GPS TX (transmit) pin to Digital 3
-//   Connect the GPS RX (receive) pin to Digital 2
-// If using hardware serial (e.g. Arduino Mega):
-//   Connect the GPS TX (transmit) pin to Arduino RX1, RX2 or RX3
-//   Connect the GPS RX (receive) pin to matching TX1, TX2 or TX3
+#include "TinyGPS++.h"
 
-// If you're using the Adafruit GPS shield, change 
-// SoftwareSerial mySerial(3, 2); -> SoftwareSerial mySerial(8, 7);
-// and make sure the switch is set to SoftSerial
+SoftwareSerial gpsSerial(GPS_RX, GPS_TX);
+TinyGPSPlus gps;
 
-// If using software serial, keep these lines enabled
-// (you can change the pin numbers to match your wiring):
- SoftwareSerial mySerial(3, 2);
+float gpsLat0;
+float gpsLong0;
 
-Adafruit_GPS GPS(&mySerial);
-// If using hardware serial (e.g. Arduino Mega), comment
-// out the above six lines and enable this line instead:
- //Adafruit_GPS GPS(&Serial1);
+float gpsLatUltimoLido = 0.00;
+float gpsLongUltimoLido = 0.00;
+
+float somaDistancia = 0.00;
 
 
-// Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
-// Set to 'true' if you want to debug and listen to the raw GPS sentences. 
-#define GPSECHO  true
+/* tabela de cursos de direcao pontos subcolaterais 
+Este - Nordeste   ENE
+Este - Sudeste    ESE
+Leste             E
+Nordeste          NE
+Noroeste          NW
+Norte - Nordeste  NNE
+Norte - Noroeste  NNW
+Oeste             W
+Oeste - Noroeste  WNW
+Oeste - Sudoeste  WSW
+Sudeste           SE
+Sudoeste          SW
+Sul               S
+Sul - Sudeste     SSE
+Sul - Sudoeste    SSW
+*/
 
-// this keeps track of whether we're using the interrupt
-// off by default!
-boolean usingInterrupt = false;
-void useInterrupt(boolean); // Func prototype keeps Arduino 0023 happy
 
-void setup()  
+void setup()
 {
-    
-  // connect at 115200 so we can read the GPS fast enough and echo without dropping chars
-  // also spit it out
   Serial.begin(115200);
-  Serial.println("Adafruit GPS library basic test!");
-
-  // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
-  GPS.begin(4800);
-  
-  // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
-  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-  // uncomment this line to turn on only the "minimum recommended" data
-  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
-  // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
-  // the parser doesn't care about other sentences at this time
-  
-  // Set the update rate
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);   // 1 Hz update rate
-  // For the parsing code to work nicely and have time to sort thru the data, and
-  // print it out we don't suggest using anything higher than 1 Hz
-
-  // Request updates on antenna status, comment out to keep quiet
-  GPS.sendCommand(PGCMD_ANTENNA);
-
-  // the nice thing about this code is you can have a timer0 interrupt go off
-  // every 1 millisecond, and read data from the GPS for you. that makes the
-  // loop code a heck of a lot easier!
-  useInterrupt(true);
-
-  delay(1000);
-  // Ask for firmware version
- }
-
-
-// Interrupt is called once a millisecond, looks for any new GPS data, and stores it
-SIGNAL(TIMER0_COMPA_vect) {
-  char c = GPS.read();
-  // if you want to debug, this is a good time to do it!
-#ifdef UDR0
-  if (GPSECHO)
-    if (c) UDR0 = c;  
-    // writing direct to UDR0 is much much faster than Serial.print 
-    // but only one character can be written at a time. 
-#endif
+  gpsSerial.begin(GPS_Serial_Baud);
 }
-
-void useInterrupt(boolean v) {
-  if (v) {
-    // Timer0 is already used for millis() - we'll just interrupt somewhere
-    // in the middle and call the "Compare A" function above
-    OCR0A = 0xAF;
-    TIMSK0 |= _BV(OCIE0A);
-    usingInterrupt = true;
-  } else {
-    // do not call the interrupt function COMPA anymore
-    TIMSK0 &= ~_BV(OCIE0A);
-    usingInterrupt = false;
-  }
-}
-
-uint32_t timer = millis();
-void loop()                     // run over and over again
-{
-  // in case you are not using the interrupt above, you'll
-  // need to 'hand query' the GPS, not suggested :(
-  if (! usingInterrupt) {
-    // read data from the GPS in the 'main loop'
-    char c = GPS.read();
-    // if you want to debug, this is a good time to do it!
-    if (GPSECHO)
-      if (c) Serial.print(c);
-  }
-  
-  // if a sentence is received, we can check the checksum, parse it...
-  if (GPS.newNMEAreceived()) {
-    // a tricky thing here is if we print the NMEA sentence, or data
-    // we end up not listening and catching other sentences! 
-    // so be very wary if using OUTPUT_ALLDATA and trytng to print out data
-    //Serial.println(GPS.lastNMEA());   // this also sets the newNMEAreceived() flag to false
-  
-    if (!GPS.parse(GPS.lastNMEA()))   // this also sets the newNMEAreceived() flag to false
-      return;  // we can fail to parse a sentence in which case we should just wait for another
-  }
-
-  // if millis() or timer wraps around, we'll just reset it
-  if (timer > millis())  timer = millis();
-
-  // approximately every 2 seconds or so, print out the current stats
-  if (millis() - timer > 2000) { 
-    timer = millis(); // reset the timer
-    
-    Serial.print("\nTime: ");
-    Serial.print(GPS.hour, DEC); Serial.print(':');
-    Serial.print(GPS.minute, DEC); Serial.print(':');
-    Serial.print(GPS.seconds, DEC); Serial.print('.');
-    Serial.println(GPS.milliseconds);
-    Serial.print("Date: ");
-    Serial.print(GPS.day, DEC); Serial.print('/');
-    Serial.print(GPS.month, DEC); Serial.print("/20");
-    Serial.println(GPS.year, DEC);
-    Serial.print("Fix: "); Serial.print((int)GPS.fix);
-    Serial.print(" quality: "); Serial.println((int)GPS.fixquality); 
-    if (GPS.fix) {
-      Serial.print("Location: ");
-      Serial.print(GPS.latitude); Serial.print(GPS.lat);
-      Serial.print(", "); 
-      Serial.print(GPS.longitude); Serial.println(GPS.lon);
-      
-      Serial.print("Speed (knots): "); Serial.println(GPS.speed);
-      Serial.print("Angle: "); Serial.println(GPS.angle);
-      Serial.print("Altitude: "); Serial.println(GPS.altitude);
-      Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
-      Serial.print(" http://maps.google.com/maps?q=");Serial.print(conv_coords(GPS.latitude));Serial.print(",");Serial.println(conv_coords(GPS.longitude)); 
-      
-      
-      float flat, flon;
-      flat=GPS.latitude;
-      flon=GPS.longitude;
  
-    }
-       
-  }
-
-}
-  float conv_coords(float in_coords)
+void loop()
 {
-  //Initialize the location.
-  float f = in_coords;
-  // Get the first two digits by turning f into an integer, then doing an integer divide by 100;
-  // firsttowdigits should be 77 at this point.
-  int firsttwodigits = ((int)f)/100;                               //This assumes that f < 10000.
-  float nexttwodigits = f - (float)(firsttwodigits*100);
-  float theFinalAnswer = (float)(firsttwodigits + nexttwodigits/60.0);
-  return theFinalAnswer;
+  bool newData = false;
+  unsigned long chars;
+  // For one second we parse GPS data and report some key values
+  for (unsigned long start = millis(); millis() - start < 1000;)
+  {
+    while (gpsSerial.available())
+    {
+      char c = gpsSerial.read();
+      // Serial.write(c); //apague o comentario para mostrar os dados crus
+      if (gps.encode(c)) // Atribui true para newData caso novos dados sejam recebidos
+        newData = true;
+    }
+  }
+  
+  
+  if (newData)
+  {
+
+    //avante exemplo de ponto fixo
+    const double AVANTE_LAT = -22.692943;
+    const double AVANTE_LNG = -46.988746;
+
+    //Gerando o ponto inicial fixo do momento que pegou sinal do GPS.
+    if (gpsLat0 == 0.0)
+    {
+      gpsLat0 = gps.location.lat();
+      gpsLong0 = gps.location.lng();
+    }
+
+    if (gpsLatUltimoLido == 0.0)
+    {
+      somaDistancia = 0.00;
+      gpsLatUltimoLido = gps.location.lat();
+      gpsLongUltimoLido = gps.location.lng();      
+    } else {
+      somaDistancia = somaDistancia + (gps.distanceBetween(gps.location.lat(),gps.location.lng(),gpsLatUltimoLido,gpsLongUltimoLido) / 1000.0);
+      gpsLatUltimoLido = gps.location.lat();
+      gpsLongUltimoLido = gps.location.lng();
+    }
+    
+    double distanceKmAvante = gps.distanceBetween(gps.location.lat(),gps.location.lng(),AVANTE_LAT,AVANTE_LNG) / 1000.0;
+    double courseToAvante = gps.courseTo(gps.location.lat(),gps.location.lng(),AVANTE_LAT,AVANTE_LNG);
+    double distanceKmPercorrida = gps.distanceBetween(gps.location.lat(),gps.location.lng(),gpsLat0,gpsLong0) / 1000.0;
+
+    Serial.println("###### Processando informações GPS ######");
+    Serial.println("Distancia Percorrida Linha Reta do ponto de partida: " + String(distanceKmPercorrida,3) + " KM");
+    Serial.println("Distancia Percorrida Total: " + String(somaDistancia,3) + " KM");
+    Serial.println("Distancia Ate Avante LInha Reta: " + String(distanceKmAvante,3) + " KM");
+    Serial.println("Direção para o Avante: " + String(courseToAvante) + " Graus");
+    Serial.println("Direção Cardeal Bussola Avante: " + String(gps.cardinal(courseToAvante)));
+    Serial.println("Precisao do GPS: " + String(gps.hdop.value()) + " Metros"); 
+    Serial.println("Altitude: " + String(gps.altitude.meters()) + " Metros");
+    Serial.println("------ Outras Informacoes Geograficas ------");
+    Serial.println("Coordenadas iniciais ponto de partida:" + String(gpsLat0, 6) + "," + String(gpsLong0, 6));
+    Serial.println("http://maps.google.com/maps?q=" + String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6));
+    Serial.println("Velocidade Atual: " + String(gps.speed.kmph()));
+    Serial.println("Quantidade de Satelites utilizados no momento: " + String(gps.satellites.value()));
+    Serial.println(); 
+
+    
+  }
 }
